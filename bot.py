@@ -4,6 +4,7 @@ import logging
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from asgiref.sync import async_to_sync # <--- Importación clave para sincronizar
 import asyncio
 
 # Habilita el log para ver errores de Telegram en Render
@@ -48,29 +49,35 @@ def home():
     """Ruta para verificar que Render está funcionando."""
     return "Bot Service is Running!", 200
 
-@app.route('/webhook', methods=['POST'])
-async def webhook_handler():
-    """Ruta que recibe las actualizaciones de Telegram."""
+# --- FUNCIÓN SINCRONA PARA PROCESAR UPDATES ---
+@async_to_sync # <--- Usamos el decorador para ejecutar esto en el hilo síncrono de Gunicorn
+async def process_telegram_update(data):
+    """Maneja la inicialización y el procesamiento de la actualización."""
     global is_initialized
     
-    # --- SOLUCIÓN CRÍTICA: Inicializar Application solo una vez ---
+    # Se inicializa solo la primera vez que se recibe un mensaje
     if not is_initialized:
-        # Se requiere initialize() para process_update()
         await application.initialize()
         is_initialized = True
-        logger.info("Application initialized successfully inside webhook_handler.")
-        
+        logger.info("Application initialized successfully on first webhook call.")
+
+    # Procesa la actualización
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+
+@app.route('/webhook', methods=['POST'])
+def webhook_handler():
+    """Ruta que recibe las actualizaciones de Telegram."""
     if request.method == "POST":
-        # 1. Obtiene el JSON de la solicitud de Telegram
         data = request.get_json(force=True)
-        # 2. Convierte el JSON en un objeto Update de Telegram
-        update = Update.de_json(data, application.bot)
-        
-        # 3. Procesa la actualización de forma asíncrona
-        await application.process_update(update)
-        
-        # 4. Devuelve una respuesta 200/ok a Telegram
-        return "ok"
+        try:
+            # Llama a la función asíncrona dentro del decorador síncrono
+            process_telegram_update(data)
+            return "ok"
+        except Exception as e:
+            logger.error(f"Error processing webhook: {e}")
+            return "Internal Server Error", 500
+    
     return "Bad Request", 400
 
 # Punto de Entrada para Gunicorn: Gunicorn buscará la variable 'app' para iniciar el servicio web.
