@@ -1,6 +1,6 @@
 import os
 import logging
-import json # NUEVO: Módulo para manejar JSON
+import json
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
@@ -40,8 +40,7 @@ def load_data():
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, 'r') as f:
-                # La clave del usuario debe ser un string para JSON, 
-                # así que la convertimos a int al cargar.
+                # La clave del usuario debe ser un string para JSON, así que la convertimos a int al cargar.
                 raw_data = json.load(f)
                 user_data = {int(k): v for k, v in raw_data.items()}
             logging.info("Datos cargados exitosamente desde user_data.json.")
@@ -54,13 +53,11 @@ def load_data():
 
 def save_data():
     """Guarda los datos de la variable global user_data en el archivo JSON."""
-    # Nota: Convertimos las claves de ID de usuario a string para que JSON pueda serializarlas correctamente.
+    # Convertimos las claves de ID de usuario a string para serializarlas.
     serializable_data = {str(k): v for k, v in user_data.items()}
     try:
         with open(DATA_FILE, 'w') as f:
             json.dump(serializable_data, f, indent=4)
-        # En entornos con Gunicorn/multi-worker, este enfoque de archivo JSON 
-        # puede tener problemas de concurrencia. Una base de datos real sería la solución.
         logging.info("Datos guardados exitosamente en user_data.json.")
     except Exception as e:
         logging.error(f"Error al guardar los datos: {e}")
@@ -77,8 +74,7 @@ def get_user_plan(user_id):
             'plan': 'gratis',
             'habits': [] 
         }
-        # Guardar la inicialización en el archivo
-        save_data() # NUEVO
+        save_data()
     return user_data[user_id]['plan']
 
 def get_habit_count(user_id):
@@ -108,7 +104,8 @@ def start_command(update: Update, context):
         "**Guía Rápida:**\n"
         "**/add <hábito>**: Agrega un nuevo hábito (ej: `/add Beber agua`).\n"
         "**/list**: Ve tus hábitos y su progreso.\n"
-        "**/check <número/nombre>**: Marca un hábito como completado.\n"
+        "**/check <número/nombre>**: Marca/desmarca un hábito como completado.\n"
+        "**/delete <número/nombre>**: Elimina un hábito.\n" # ACTUALIZADO
         "**/premium**: Conoce nuestros planes de pago.\n"
         "**/help**: Lista todos los comandos.\n\n"
         f"--- **Tu Estado Actual** ---\n{plan_info}"
@@ -122,7 +119,8 @@ def help_command(update: Update, context):
         "**/start**: Mensaje de bienvenida y estado del plan.\n"
         "**/add <hábito>**: Agrega un nuevo hábito.\n"
         "**/list**: Muestra tus hábitos.\n"
-        "**/check <número/nombre>**: Marca un hábito como completado.\n"
+        "**/check <número/nombre>**: Marca/desmarca un hábito como completado.\n"
+        "**/delete <número/nombre>**: Elimina un hábito.\n" # ACTUALIZADO
         "**/premium**: Información sobre planes Pro y VIP.\n"
         "**/help**: Muestra esta lista de comandos."
     )
@@ -156,13 +154,11 @@ def add_habit_command(update: Update, context):
 
     new_habit = " ".join(context.args).strip()
     
-    # Búsqueda de duplicados usando la clave 'name'
     if new_habit in [h['name'] for h in current_habits]:
         update.message.reply_text(f"⚠️ **Ya existe**: El hábito **'{new_habit}'** ya está en tu lista.", parse_mode='Markdown')
         return
         
     if len(current_habits) >= habit_limit:
-        # Límite alcanzado
         limit_message = get_limit_message(user_id)
         update.message.reply_text(
             f"🛑 **Límite Alcanzado**\n\n"
@@ -173,10 +169,7 @@ def add_habit_command(update: Update, context):
         )
         return
 
-    # Agregar el nuevo hábito con su estado inicial
     current_habits.append({'name': new_habit, 'checked_today': False})
-    
-    # GUARDAR DATOS después de la modificación
     save_data()
 
     count = len(current_habits)
@@ -244,12 +237,10 @@ def check_habit_command(update: Update, context):
                 break
 
     if target_habit_obj:
-        # Alternar el estado
         current_status = target_habit_obj.get('checked_today', False)
         new_status = not current_status
         target_habit_obj['checked_today'] = new_status
         
-        # GUARDAR DATOS después de la modificación
         save_data()
 
         habit_name = target_habit_obj['name']
@@ -262,6 +253,51 @@ def check_habit_command(update: Update, context):
         update.message.reply_text(response, parse_mode='Markdown')
     else:
         update.message.reply_text(f"❌ **Error**: Hábito **'{query}'** no encontrado en tu lista. Usa `/list` para ver tus hábitos.", parse_mode='Markdown')
+
+
+def delete_habit_command(update: Update, context):
+    """Permite al usuario eliminar un hábito por número o nombre."""
+    user_id = update.effective_user.id
+    habits = user_data.get(user_id, {}).get('habits', [])
+
+    if not context.args:
+        update.message.reply_text("❌ **Error**: Debes especificar el **número** o **nombre** del hábito a eliminar.\nEjemplo: `/delete 1` o `/delete Meditar 10 minutos`", parse_mode='Markdown')
+        return
+        
+    query = " ".join(context.args).strip()
+    
+    habit_index_to_delete = -1
+    habit_name_to_delete = ""
+
+    # 1. Intentar buscar por índice (número)
+    try:
+        index_query = int(query) - 1
+        if 0 <= index_query < len(habits):
+            habit_index_to_delete = index_query
+            habit_name_to_delete = habits[index_query]['name']
+    except ValueError:
+        # 2. Si no es un número, intentar búsqueda por nombre
+        for i, habit_obj in enumerate(habits):
+            if habit_obj['name'].lower() == query.lower():
+                habit_index_to_delete = i
+                habit_name_to_delete = habit_obj['name']
+                break
+
+    if habit_index_to_delete != -1:
+        # 3. Eliminar el hábito de la lista
+        del habits[habit_index_to_delete]
+        
+        # 4. Guardar los datos actualizados
+        save_data()
+        
+        # 5. Responder al usuario
+        update.message.reply_text(
+            f"🗑️ ¡Hábito **'{habit_name_to_delete}'** eliminado correctamente!\n"
+            f"Ahora tienes **{len(habits)}** hábitos activos.",
+            parse_mode='Markdown'
+        )
+    else:
+        update.message.reply_text(f"❌ **Error**: Hábito **'{query}'** no encontrado en tu lista. Usa `/list` para verificar.", parse_mode='Markdown')
 
 
 def main():
@@ -283,6 +319,7 @@ def main():
     dispatcher.add_handler(CommandHandler("add", add_habit_command))
     dispatcher.add_handler(CommandHandler("list", list_habits_command)) 
     dispatcher.add_handler(CommandHandler("check", check_habit_command)) 
+    dispatcher.add_handler(CommandHandler("delete", delete_habit_command)) # NUEVO
 
     logging.info("Handlers de comandos cargados correctamente.")
     
