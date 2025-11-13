@@ -37,6 +37,8 @@ application = Application.builder().token(BOT_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
+application.initialize()
+
 # --- 4. Configuración del Servidor Flask (Punto de entrada de Render) ---
 app = Flask(__name__)
 
