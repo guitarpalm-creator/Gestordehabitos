@@ -55,14 +55,7 @@ async def webhook_handler():
         return "ok"
     return "Bad Request", 400
 
-# Esta función configura el webhook, se llama una sola vez al inicio
-async def set_webhook():
-    if RENDER_EXTERNAL_URL:
-        webhook_url = f"{RENDER_EXTERNAL_URL}/webhook"
-        logger.info(f"Setting webhook to: {webhook_url}")
-        # Asegúrate de usar 'await' si estás fuera del bucle de eventos
-        async with application:
-             await application.bot.set_webhook(url=webhook_url)
+
 
 # Llamamos a la función de configuración del webhook inmediatamente
 import threading
