@@ -5,7 +5,9 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 # Importamos la utilidad para correr tareas asíncronas en el hilo de Gunicorn
-from asgiref.sync import async_to_sync, sync_to_async 
+from asgiref.sync import async_to_sync 
+# Importamos asyncio, aunque no se usa directamente en el handler, es bueno tenerlo
+import asyncio 
 
 # Habilita el log para ver errores de Telegram en Render
 logging.basicConfig(
@@ -56,7 +58,6 @@ async def process_telegram_update(data):
     
     # Se inicializa solo la primera vez que se recibe un mensaje
     if not is_initialized:
-        # La inicialización se hace aquí para garantizar que se use un bucle de eventos válido
         await application.initialize()
         is_initialized = True
         logger.info("Application initialized successfully on first webhook call.")
@@ -65,28 +66,24 @@ async def process_telegram_update(data):
     update = Update.de_json(data, application.bot)
     await application.process_update(update)
 
-# --- WEBHOOK HANDLER: DELEGAMOS A UN HILO ESTABLE ---
-# Usamos el decorador @sync_to_async en la función de envoltura de Flask
+# --- WEBHOOK HANDLER: FUNCIÓN SÍNCRONA DE FLASK ---
+# ¡IMPORTANTE! Eliminamos el decorador @sync_to_async aquí.
 @app.route('/webhook', methods=['POST'])
-@sync_to_async
-def webhook_handler_wrapper():
-    """Una función síncrona/de envoltura para la ruta /webhook de Flask."""
+def webhook_handler():
+    """Ruta síncrona que recibe las actualizaciones de Telegram y delega."""
     if request.method == "POST":
         data = request.get_json(force=True)
         try:
-            # Ejecutamos la función asíncrona dentro del contexto síncrono del wrapper
-            # Esto maneja el conflicto del Event Loop Closed
+            # Usamos async_to_sync para ejecutar la función asíncrona dentro
+            # de este hilo síncrono. Esto resuelve el problema del Event Loop Closed.
             async_to_sync(process_telegram_update)(data)
+            
+            # Flask retorna una respuesta síncrona VÁLIDA inmediatamente.
             return "ok"
         except Exception as e:
             logger.error(f"Error processing webhook: {e}")
-            # El código de error 500 garantiza que Telegram reintente el mensaje
             return "Internal Server Error", 500
     
     return "Bad Request", 400
-
-# El nombre de la ruta que Flask necesita es webhook_handler_wrapper
-# Lo renombramos para que sea más intuitivo
-webhook_handler = webhook_handler_wrapper
 
 # Punto de Entrada para Gunicorn: Gunicorn buscará la variable 'app' para iniciar el servicio web.
