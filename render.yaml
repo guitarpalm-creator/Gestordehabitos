@@ -6,4 +6,4 @@ services:
     startCommand: "gunicorn app:app"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.8 # Forzamos Python 3.11, que no tiene el conflicto con SQLAlchemy.
+        value: 3.11.8 # Esto obligará a Render a usar el mismo nivel de Python que tú.
