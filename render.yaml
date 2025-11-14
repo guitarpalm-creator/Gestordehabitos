@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: Gestordehabitos
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.8 # Forzamos Python 3.11, que no tiene el conflicto con SQLAlchemy.
