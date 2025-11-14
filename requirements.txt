@@ -1,5 +1,5 @@
 python-telegram-bot==13.15
 Flask==2.3.3
 gunicorn
-SQLAlchemy==1.4.50  # ¡CAMBIO A LA VERSIÓN COMPATIBLE!
+SQLAlchemy==1.4.50  <-- ¡DEBE QUEDAR EXACTAMENTE ASÍ!
 psycopg2-binary
