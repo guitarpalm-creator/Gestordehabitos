@@ -1,5 +1,5 @@
 python-telegram-bot==13.15
 Flask==2.3.3
 gunicorn
-SQLAlchemy==2.0.30  # Incrementamos la versión
+SQLAlchemy==2.0.30  # Usamos la 2.0.30 para mayor seguridad
 psycopg2-binary
